@@ -3,6 +3,7 @@
  * Copyright(c) 2024 MediaTek. All rights reserved.
  *
  * Author: Hailong Fan <hailong.fan@mediatek.com>
+ *         Darren Ye <darren.ye@mediatek.com>
  */
 
 #include <platform/drivers/mt_reg_base.h>
@@ -32,92 +33,6 @@ STATIC_ASSERT(ARRAY_SIZE(platform_cpu_freq) == NUM_CPU_FREQ,
 
 static SHARED_DATA struct clock_info platform_clocks_info[NUM_CLOCKS];
 
-static void clk_dsppll_enable(uint32_t value)
-{
-	tr_dbg(&clkdrv_tr, "clk_dsppll_enable %d\n", value);
-
-	switch (value) {
-	case ADSP_CLK_PLL_400M:
-		io_reg_write(MTK_ADSPPLL_CON1, MTK_PLL_DIV_RATIO_400M);
-		break;
-	case ADSP_CLK_PLL_800M:
-		io_reg_write(MTK_ADSPPLL_CON1, MTK_PLL_DIV_RATIO_800M);
-		break;
-	default:
-		tr_err(&clkdrv_tr, "invalid dsppll: %d\n", value);
-		return;
-	}
-
-	//todo
-	//io_reg_update_bits(MTK_ADSPPLL_CON3, MTK_PLL_PWR_ON, MTK_PLL_PWR_ON);
-	wait_delay_us(1);
-	//io_reg_update_bits(MTK_ADSPPLL_CON3, MTK_PLL_ISO_EN, 0);
-	wait_delay_us(1);
-	io_reg_update_bits(MTK_ADSPPLL_CON0, MTK_PLL_EN, MTK_PLL_EN);
-	wait_delay_us(20);
-}
-
-static void clk_dsppll_disable(void)
-{
-	tr_dbg(&clkdrv_tr, "clk_dsppll_disable\n");
-
-	io_reg_update_bits(MTK_ADSPPLL_CON0, MTK_PLL_EN, 0);
-	wait_delay_us(1);
-	//io_reg_update_bits(MTK_ADSPPLL_CON3, MTK_PLL_ISO_EN, MTK_PLL_ISO_EN);
-	wait_delay_us(1);
-	//io_reg_update_bits(MTK_ADSPPLL_CON3, MTK_PLL_PWR_ON, 0);
-}
-
-static void set_mux_adsp_sel(uint32_t value)
-{
-	io_reg_write(MTK_CLK_CFG_17_CLR, MTK_CLK_ADSP_MASK << MTK_CLK_ADSP_OFFSET);
-	io_reg_write(MTK_CLK_CFG_17_SET, value << MTK_CLK_ADSP_OFFSET);
-	io_reg_write(MTK_CLK_CFG_UPDATE2, MTK_CLK_UPDATE_ADSK_CLK);
-
-	tr_dbg(&clkdrv_tr, "adsp_clk_mux=%x, CLK_CFG_17=0x%08x\n",
-	       value, io_reg_read(MTK_CLK_CFG_17));
-}
-
-static void set_mux_adsp_bus_sel(uint32_t value)
-{
-	io_reg_write(MTK_CLK_CFG_17_CLR,
-		     MTK_CLK_AUDIO_LOCAL_BUS_MASK << MTK_CLK_AUDIO_LOCAL_BUS_OFFSET);
-	io_reg_write(MTK_CLK_CFG_17_SET, value << MTK_CLK_AUDIO_LOCAL_BUS_OFFSET);
-	io_reg_write(MTK_CLK_CFG_UPDATE2, MTK_CLK_UPDATE_AUDIO_LOCAL_BUS_CLK);
-
-	tr_dbg(&clkdrv_tr, "audio_local_bus_mux=%x, CLK_CFG_17=0x%08x\n",
-	       value, io_reg_read(MTK_CLK_CFG_17));
-}
-
-static int clock_platform_set_dsp_freq(int clock, int freq_idx)
-{
-	int freq = platform_cpu_freq[freq_idx].freq;
-
-	tr_info(&clkdrv_tr, "clock_platform_set_cpu_freq %d\n", freq);
-
-	switch (freq_idx) {
-	case ADSP_CLK_26M:
-		set_mux_adsp_sel(MTK_CLK_ADSP_26M);
-		set_mux_adsp_bus_sel(MTK_CLK_AUDIO_LOCAL_BUS_26M);
-		clk_dsppll_disable();
-		break;
-	case ADSP_CLK_PLL_400M:
-		clock_platform_set_dsp_freq(clock, ADSP_CLK_26M);
-		clk_dsppll_enable(ADSP_CLK_PLL_400M);
-		set_mux_adsp_sel(MTK_CLK_ADSP_ADSPPLL);
-		set_mux_adsp_bus_sel(MTK_CLK_AUDIO_LOCAL_BUS_MAINPLL_D_7);
-		break;
-	case ADSP_CLK_PLL_800M:
-		clock_platform_set_dsp_freq(clock, ADSP_CLK_26M);
-		clk_dsppll_enable(ADSP_CLK_PLL_800M);
-		set_mux_adsp_sel(MTK_CLK_ADSP_ADSPPLL);
-		set_mux_adsp_bus_sel(MTK_CLK_AUDIO_LOCAL_BUS_MAINPLL_D_4);
-		break;
-	}
-
-	return 0;
-}
-
 void platform_clock_init(struct sof *sof)
 {
 	int i;
@@ -131,7 +46,7 @@ void platform_clock_init(struct sof *sof)
 			.current_freq_idx = CPU_DEFAULT_IDX,
 			.notification_id = NOTIFIER_ID_CPU_FREQ,
 			.notification_mask = NOTIFIER_TARGET_CORE_MASK(i),
-			.set_freq = clock_platform_set_dsp_freq,
+			.set_freq = NULL,
 		};
 	}
 }
